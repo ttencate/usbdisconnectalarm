@@ -12,6 +12,7 @@ from functools import partial
 watched_paths = {}
 missing_devices = set()
 screen_white = False
+sound_playing = False
 commands = {}
 command_indices = defaultdict(int)
 
@@ -47,6 +48,20 @@ def reset():
         watched_paths[path] = device_description(device)
     missing_devices = set()
 
+def poll_monitor(timeout):
+    global watched_paths
+    global missing_devices
+    for device in iter(partial(monitor.poll, 0.25), None):
+        path = device.sys_path
+        if path not in watched_paths:
+            continue
+        if device.action in ['remove', 'offline']:
+            print('ALARM: %s REMOVED' % watched_paths[path])
+            missing_devices.add(path)
+        elif device.action in ['add', 'online']:
+            print('ALARM END: %s ADDED' % watched_paths[path])
+            missing_devices.remove(path)
+
 def handle_key(char):
     global commands
     global command_indices
@@ -81,20 +96,7 @@ monitor.filter_by(subsystem='usb')
 monitor.start()
 
 while True:
-    for device in iter(partial(monitor.poll, 0.25), None):
-        path = device.sys_path
-        if path not in watched_paths:
-            continue
-        if device.action in ['remove', 'offline']:
-            print('ALARM: %s REMOVED' % watched_paths[path])
-            if not missing_devices:
-                alarm_sound.play(-1)
-            missing_devices.add(path)
-        elif device.action in ['add', 'online']:
-            print('ALARM END: %s ADDED' % watched_paths[path])
-            missing_devices.remove(path)
-            if not missing_devices:
-                alarm_sound.stop()
+    poll_monitor(0.20)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -104,12 +106,18 @@ while True:
             handle_key(event.unicode)
 
     if missing_devices:
+        if not sound_playing:
+            alarm_sound.play(-1)
+            sound_playing = True
         screen_white = not screen_white
         screen.fill(white if screen_white else black)
         message = ', '.join(watched_paths[d] for d in missing_devices)
         text = font.render(message, True, black if screen_white else white)
         screen.blit(text, ((screen.get_width() - text.get_width()) // 2, (screen.get_height() - text.get_height()) // 2))
     else:
+        if sound_playing:
+            alarm_sound.stop()
+            sound_playing = False
         screen_white = False
         screen.fill(black)
     pygame.display.flip()
