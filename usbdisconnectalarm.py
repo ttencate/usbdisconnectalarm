@@ -38,6 +38,7 @@ def exit():
 
 def reset():
     global watched_paths
+    global missing_devices
     print('Connected USB devices:')
     watched_paths = {}
     for device in context.list_devices(subsystem='usb', DEVTYPE='usb_device'):
